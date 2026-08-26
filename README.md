@@ -6,7 +6,7 @@ A progressive exploration of the Claude Agent SDK and the decisions a harness ar
 - `server.py`: an API boundary, jobs that outlive the request, every tool call refusable
 - `app.py`: a surface that only speaks HTTP
 
-Intention is that models and loops are rented, whilst the domain tools are a separate repo belonging to no harness, ie. portable, over in [mcp-clients](https://github.com/obviattor1824/mcp-clients), which runs in its own venv (deliberately).
+Intention is that models and loops are rented, whilst the domain tools are a separate repo belonging to no harness, ie. portable, over in [mcp-clients](https://github.com/obviattor1824/mcp-clients).
 
 ## The decisions
 
@@ -26,7 +26,7 @@ Forks this hit, in roughly the order they arrive, inside `ClaudeAgentOptions` an
 
 ### Building around it
 
-**Where does domain specific knowledge live?** Not in the model (obvs) and not in the harness because a tool written inside a harness belongs to it and only it. Here it lives in a separate MCP server speaking stdio, so anything that speaks MCP can spawn it.
+**Where does domain specific knowledge live?** Not in the model, nor the harness because a tool written inside a harness belongs to it and only it. Here it lives in a separate MCP server speaking stdio, so anything that speaks MCP can spawn it.
 
 **Is a run a request or a job?** Twenty seconds to three minutes is past the timeout of most gateways. `POST /run` returns a job id and the work carries on without the connection.
 
@@ -121,7 +121,7 @@ curl -sX POST localhost:8000/run -H 'content-type: application/json' \
 curl -s localhost:8000/jobs/JOB_ID
 ```
 
-`permission_denials` is the count. `permission_log` holds each decision, the path that triggered it, and the message the model received — which names both the attempted path and the directory that is allowed. That is what lets a run recover instead of retrying variations.
+`permission_denials` is the count. `permission_log` holds each decision, the path that triggered it, and the message the model received — which names both the attempted path and the directory that is allowed.
 
 **4. Add the surface.** With the server still up:
 
@@ -139,7 +139,7 @@ showing total outstanding, count by status, and the three oldest overdue
 invoices. Run the script and show me the output.
 ```
 
-Then, in the same thread: *Can we release an order to Castilla Foods?* The account is on hold. Whether that changes the answer rather than merely appearing in it is the point — the tool supplies the fact, the model supplies the judgement, and neither works alone.
+Then, in the same thread: Can we release an order to Castilla Foods? The account is on hold, so that should inform the answer not just appear in it.
 
 The two processes are genuinely independent. A job runs in the server's event loop, so closing the browser tab does not cancel it; reopening the UI mid-run picks the stream back up. Only `DELETE /jobs/{job_id}` — the **Cancel** button — stops one.
 
