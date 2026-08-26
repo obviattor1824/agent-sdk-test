@@ -3,6 +3,14 @@
 A test harness for the Claude Agent SDK, in three layers. Each one wraps the one
 below it and adds exactly one thing.
 
+Pairs with [mcp-clients](https://github.com/obviattor1824/mcp-clients), the MCP server this harness spawns.
+The code expects the two checkouts to be siblings:
+
+```bash
+git clone https://github.com/obviattor1824/agent-sdk-test.git
+git clone https://github.com/obviattor1824/mcp-clients.git
+```
+
 | File | What it is |
 | --- | --- |
 | `run.py` | CLI. Runs one task, dumps the raw message stream, logs JSONL. |
@@ -14,10 +22,14 @@ below it and adds exactly one thing.
 Working directories are `workspaces/{job_id}/`, one per job. Streams are logged
 to `logs/job-{job_id}.jsonl`, one JSON object per message.
 
+**This is a test harness, not a sandbox.** The workspace containment in
+`server.py` is defence-in-depth for experimenting with the SDK on a machine you
+control. It has not been adversarially tested and is not a security boundary.
+
 ## MCP servers
 
 `run.py` and `server.py` both register the `clients` MCP server, which lives in
-the sibling repo `../mcp-clients` and exposes `lookup_client`. It is defined once
+the sibling repo [`../mcp-clients`](https://github.com/obviattor1824/mcp-clients) and exposes `lookup_client`. It is defined once
 in `mcp_config.py` so the CLI and the job queue cannot drift apart. Point
 `MCP_CLIENTS_ROOT` elsewhere if that checkout moves.
 
