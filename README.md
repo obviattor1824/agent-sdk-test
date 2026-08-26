@@ -6,7 +6,7 @@ A progressive exploration of the Claude Agent SDK and the decisions a harness ar
 - `server.py`: an API boundary, jobs that outlive the request, every tool call refusable
 - `app.py`: a surface that only speaks HTTP
 
-Intention is that models and loops are rented, whilst the domain tools are a separate repo belonging to no harness, ie. portable.
+Intention is that models and loops are rented, whilst the domain tools are a separate repo belonging to no harness, ie. portable, over in [mcp-clients](https://github.com/obviattor1824/mcp-clients), which runs in its own venv (deliberately).
 
 ## The decisions
 
@@ -32,6 +32,7 @@ Forks this hit, in roughly the order they arrive, inside `ClaudeAgentOptions` an
 
 **Does the UI own the agent?** If it does, closing the tab kills the run. `app.py` is an HTTP client of `server.py` and never imports the SDK.
 
+
 | File             | What it is                                                             | Permissions         |
 | ---------------- | ---------------------------------------------------------------------- | ------------------- |
 | `run.py`         | CLI. Runs one task, dumps the raw message stream, logs JSONL.          | `bypassPermissions` |
@@ -39,6 +40,7 @@ Forks this hit, in roughly the order they arrive, inside `ClaudeAgentOptions` an
 | `server.py`      | FastAPI job queue. Jobs run in the background and outlive the request. | `can_use_tool`      |
 | `app.py`         | Streamlit UI over the server. HTTP only — it never imports the SDK.    | —                   |
 | `mcp_config.py`  | Which MCP servers to spawn, and which of their tools are allowed.      | —                   |
+
 
 **Only** `server.py` **confines anything** — `run.py` and `resume_test.py` run under `bypassPermissions`. So it matters which one you are running, and the least contained one is the easiest to start with.
 
@@ -51,9 +53,13 @@ git clone https://github.com/obviattor1824/agent-sdk-test.git
 git clone https://github.com/obviattor1824/mcp-clients.git
 ```
 
+
+
 ## Setup
 
-Python 3.10+. Verified on 3.13, `claude-agent-sdk` 0.2.128, Streamlit 1.60.
+Python 3.10+ — check with `python3 --version`. On macOS the stock `python3` is 3.9, so name the interpreter explicitly (`python3.13`) or the venv will not install.
+
+Last verified on 3.13 with `claude-agent-sdk` 0.2.144, `mcp` 2.1.1 and Streamlit 1.62. Nothing is pinned, so a fresh clone gets whatever is current; those are the versions this was known to work on, not a constraint.
 
 ```bash
 cd agent-sdk-test
@@ -77,7 +83,7 @@ That one is yours to keep current, and it is not the one the SDK runs.
 
 Five steps where each adds one thing to the one before.
 
-**1. Baseline.** `run.py` with no MCP server, no policy, no surface:
+**1. Baseline.** `run.py` on its own — no permission policy, no API, no surface. `mcp_config.py` registers the `clients` server for every entry point, so if you have already built the sibling repo the tool is here too; the baseline is what you get before that.
 
 ```bash
 ./.venv/bin/python run.py "Create a file called hello.txt containing the word hi, in the current directory."
@@ -173,7 +179,10 @@ Rough and ready as a proof of concept. Sessions are tracked in memory, so restar
 agent's directory. Only files that job touched are listed, so the third turn of a thread does not re-show what the first two wrote.
 - **New thread** clears the stored `session_id`; until then every submission passes it to `POST /run`, which resumes the conversation and reuses its workspace.
 
+
+
 ## The API
+
 
 | Endpoint                          |                                                              |
 | --------------------------------- | ------------------------------------------------------------ |
@@ -185,4 +194,5 @@ agent's directory. Only files that job touched are listed, so the third turn of 
 | `GET /jobs`                       | every job this process knows about                           |
 | `DELETE /jobs/{job_id}`           | cancel a running job                                         |
 | `GET /health`                     | liveness, and how many jobs this process is holding          |
+
 

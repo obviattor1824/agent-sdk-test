@@ -355,11 +355,18 @@ def make_permission_callback(job: "Job", log: StreamLog):
             target = resolve_path(str(raw), root)
             if is_inside(target, root):
                 return record(tool_name, tool_input, True, f"{target} is inside {root}")
+            # Name the path the model actually asked for as well as the one it
+            # resolved to. /tmp/x resolving to /private/tmp/x is correct for
+            # containment but is not a string the model ever typed, and the
+            # denial is only actionable if it recognises what it wrote. The
+            # Bash branch below already does this.
+            shown = str(raw) if str(raw) != str(target) else str(target)
+            resolved = "" if str(raw) == str(target) else f" (resolves to {target})"
             return record(
                 tool_name,
                 tool_input,
                 False,
-                f"{tool_name} denied: {target} is outside this job's workspace. "
+                f"{tool_name} denied: {shown}{resolved} is outside this job's workspace. "
                 f"This job may only read and write inside {root}. "
                 f"Use a relative path, or an absolute path under that directory.",
             )

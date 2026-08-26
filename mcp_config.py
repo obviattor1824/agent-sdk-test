@@ -25,10 +25,11 @@ MCP_CLIENTS_ROOT = Path(
     os.environ.get("MCP_CLIENTS_ROOT", REPO_ROOT.parent / "mcp-clients")
 ).resolve()
 
-# Its own venv, not ours: this venv is capped at mcp 1.x by claude-agent-sdk
-# while that server needs 2.x, and an MCP server is spawned as a bare subprocess
-# with no shell and no activated environment, so the interpreter has to be named
-# absolutely.
+# Its own venv, not ours. An MCP server is spawned as a bare subprocess with no
+# shell and no activated environment, so the interpreter has to be named
+# absolutely -- and the one it names should belong to the server rather than to
+# whichever harness spawned it. (claude-agent-sdk capped mcp below 2.x until
+# 0.2.144, which forced this; the cap is now <3.0.0, so it is a choice.)
 MCP_CLIENTS_PYTHON = MCP_CLIENTS_ROOT / ".venv" / "bin" / "python"
 MCP_CLIENTS_SERVER = MCP_CLIENTS_ROOT / "server.py"
 
