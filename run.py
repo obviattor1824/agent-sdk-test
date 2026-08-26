@@ -104,8 +104,14 @@ def check_init(data: dict) -> None:
     expected = set(MCP_SERVERS)
     unexpected = sorted(n for n in mcp_names if n not in expected)
     missing = sorted(expected - set(mcp_names))
+    # "pending" is deliberately not a failure: servers connect asynchronously
+    # and init is emitted before they have all finished. Observed pending here
+    # and answering correctly three messages later. Anything else unrecognised
+    # is treated as broken, so a new status warns rather than passing silently.
+    pending = sorted(n for n in expected if mcp_status.get(n) == "pending")
     disconnected = sorted(
-        n for n in expected if n in mcp_status and mcp_status[n] != "connected"
+        n for n in expected
+        if n in mcp_status and mcp_status[n] not in ("connected", "pending")
     )
 
     dirty = []
@@ -118,8 +124,8 @@ def check_init(data: dict) -> None:
         print()
         print("!" * 72)
         print(f"!! WARNING: settings leaked -- {'; '.join(dirty)}.")
-        print("!! setting_sources=[] should have prevented this. This run is not")
-        print("!! isolated from your machine's configuration.")
+        print("!! strict_mcp_config=True should have prevented this. This run is")
+        print("!! not isolated from your machine's configuration.")
         print("!" * 72)
     else:
         print("OK: only the MCP servers this run asked for; no plugins leaked.")
@@ -135,6 +141,10 @@ def check_init(data: dict) -> None:
             print(f"!! MCP server {name!r} status is {mcp_status[name]!r}, not 'connected'.")
         print("!! Its tools are NOT available; answers about that domain will be guesses.")
         print("!" * 72)
+
+    if pending:
+        print(f"note: still connecting at init: {', '.join(pending)} "
+              f"(normal; they usually finish before the first tool call)")
 
     print("--- end init check ---")
 
@@ -246,10 +256,16 @@ async def main(argv: list[str]) -> int:
         # skills, plugins, MCP servers or custom tools leak in from ~/.claude
         # or .claude. Requires SDK > 0.1.59; None (the default) loads them all.
         setting_sources=[],
-        # setting_sources=[] only blocks servers configured on disk. This is
-        # passed to the SDK directly and is unaffected, so the run stays
-        # isolated from ~/.claude while still getting this one server.
+        # Passed to the SDK directly, so neither flag above or below excludes
+        # it -- this one server still arrives.
         mcp_servers=MCP_SERVERS,
+        # setting_sources=[] only blocks servers configured on disk. It does
+        # nothing about account-level connectors on claude.ai, which arrive by
+        # another route entirely and showed up on some runs and not others with
+        # no config change. This is the switch that excludes them; it maps to
+        # the CLI's --strict-mcp-config, which the CLI comparison runs always
+        # had and the SDK side did not.
+        strict_mcp_config=True,
         # NB: `tools` is deliberately left unset. The binary's own ~31 tools and
         # ~16 skills are the out-of-the-box product; restricting them would mean
         # testing a configured harness rather than the default one.

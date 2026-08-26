@@ -83,7 +83,7 @@ def preflight(*, stream=sys.stderr) -> bool:
             print(f"  missing: {path}", file=stream)
         print(
             "  Set MCP_CLIENTS_ROOT, or create the venv:\n"
-            f"    python3.13 -m venv {MCP_CLIENTS_ROOT}/.venv\n"
+            f"    python3 -m venv {MCP_CLIENTS_ROOT}/.venv\n"
             f"    {MCP_CLIENTS_ROOT}/.venv/bin/pip install -r {MCP_CLIENTS_ROOT}/requirements.txt",
             file=stream,
         )

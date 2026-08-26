@@ -458,11 +458,12 @@ def make_options(workspace: Path, resume: str | None, can_use_tool) -> ClaudeAge
     return ClaudeAgentOptions(
         cwd=str(workspace),
         setting_sources=[],
-        # setting_sources=[] blocks servers configured on disk in ~/.claude or
-        # .claude/. It does not block these: mcp_servers is passed to the SDK
-        # directly, so isolation from the machine's config is preserved while
-        # this one server is still available.
+        # Passed to the SDK directly, so neither isolation flag excludes it.
         mcp_servers=MCP_SERVERS,
+        # setting_sources=[] blocks only what is configured on disk. Account
+        # connectors on claude.ai arrive another way and need this as well --
+        # without it a run had third-party write tools in scope.
+        strict_mcp_config=True,
         allowed_tools=[],
         permission_mode="default",
         can_use_tool=can_use_tool,
