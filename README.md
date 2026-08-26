@@ -11,20 +11,157 @@ git clone https://github.com/obviattor1824/agent-sdk-test.git
 git clone https://github.com/obviattor1824/mcp-clients.git
 ```
 
-| File | What it is |
-| --- | --- |
-| `run.py` | CLI. Runs one task, dumps the raw message stream, logs JSONL. |
-| `resume_test.py` | Two runs against one session, to check resume actually resumes. |
-| `server.py` | FastAPI job queue. Jobs run in the background and outlive the request. |
-| `app.py` | Streamlit UI over the server. HTTP only — it never imports the SDK. |
-| `mcp_config.py` | Which MCP servers to spawn, and which of their tools are allowed. |
+## Setup
 
-Working directories are `workspaces/{job_id}/`, one per job. Streams are logged
-to `logs/job-{job_id}.jsonl`, one JSON object per message.
+Python 3.10+. Verified on 3.13, `claude-agent-sdk` 0.2.128, Streamlit 1.60.
 
-**This is a test harness, not a sandbox.** The workspace containment in
-`server.py` is defence-in-depth for experimenting with the SDK on a machine you
-control. It has not been adversarially tested and is not a security boundary.
+```bash
+cd agent-sdk-test
+python3 -m venv .venv
+./.venv/bin/pip install -r requirements.txt
+```
+
+Nothing here talks to Anthropic. The SDK spawns the Claude Code binary as a
+subprocess and speaks JSON to it over stdio; that binary makes the calls and
+holds the credentials. The wheel ships its own copy at
+`claude_agent_sdk/_bundled/claude` — it does on macOS arm64; where it does not,
+`_find_cli()` falls back to `PATH`. When a bundled copy exists it wins, so
+`claude --version` in your shell tells you nothing about what a run just used. **The version under test is pinned by
+pip.** Read it off the init message — `claude_code_version` — every time you
+compare anything.
+
+Auth is whatever that binary already has, from the same credential store the CLI
+uses; a subscription is enough. `setting_sources=[]` does not touch it — that
+governs settings, skills, plugins and disk-configured MCP servers, not
+credentials, so an isolated run is still an authenticated one. These runs report
+`apiKeySource: none`; setting `ANTHROPIC_API_KEY` changes which meter you are
+billed against.
+
+The CLI comparison runs and `claude --mcp-config` do need a `claude` on `PATH`:
+
+```bash
+npm install -g @anthropic-ai/claude-code
+```
+
+That one is yours to keep current, and it is not the one the SDK runs.
+
+`mcp-clients` has its own setup — see its README. Without it the harness still
+runs: `preflight()` warns at startup, the init message reports the server as
+`status: "failed"`, `check_init` says so loudly, and `lookup_client` is absent.
+
+## Try it
+
+Five runs. The first two and the last need nothing but `run.py`.
+
+**1. Does any of this work.**
+
+```bash
+./.venv/bin/python run.py "Create a file called hello.txt containing the word hi, in the current directory."
+```
+
+Every message from the loop prints with its type, and `check_init` reports what
+the run actually booted with. Then check where `hello.txt` actually landed. Under
+`bypassPermissions` a task that names no location gets one chosen for it, and
+`cwd` does not prevent that — which is why this prompt says *in the current
+directory* and why it is worth confirming that it worked.
+
+**2. Did the MCP server connect.**
+
+```bash
+./.venv/bin/python run.py "What payment terms does Castilla Foods have?"
+```
+
+The directory says 60 days. That fact exists nowhere else, so 60 means the tool
+was called and anything else means it was not — and the init check above will
+already have said why.
+
+**3. Watch a denial.** Server in one terminal:
+
+```bash
+./.venv/bin/uvicorn server:app --port 8000
+```
+
+Then:
+
+```bash
+curl -sX POST localhost:8000/run -H 'content-type: application/json' \
+  -d '{"task":"Write a file called marker.txt containing BETA to /tmp."}'
+
+curl -s localhost:8000/jobs/JOB_ID
+```
+
+`permission_denials` is the count. `permission_log` holds each decision, the path
+that triggered it, and the message the model received — which names both the
+attempted path and the directory that is allowed. That is what lets a run recover
+instead of retrying variations.
+
+**4. The task worth watching, in the UI.** With the server still up:
+
+```bash
+./.venv/bin/streamlit run app.py
+```
+
+```
+In this directory, create a small CSV of 20 fictional invoices with columns:
+invoice_number, client_name, issue_date, amount_eur, status (paid/overdue/draft).
+Then write a Python script that reads it and outputs a summary markdown file
+showing total outstanding, count by status, and the three oldest overdue
+invoices. Run the script and show me the output.
+```
+
+Then, in the same thread: *Can we release an order to Castilla Foods?* The
+account is on hold. Whether that changes the answer rather than merely appearing
+in it is the point — the tool supplies the fact, the model supplies the
+judgement, and neither works alone.
+
+**5. Does resume actually resume.**
+
+```bash
+./.venv/bin/python resume_test.py
+```
+
+Two runs against one session, the second asking something answerable only from
+the conversation. It prints its own verdict: zero tool calls in run 2 means it
+answered from memory rather than going back to the filesystem.
+
+| File | What it is | Permissions |
+| --- | --- | --- |
+| `run.py` | CLI. Runs one task, dumps the raw message stream, logs JSONL. | `bypassPermissions` |
+| `resume_test.py` | Two runs against one session, to check resume actually resumes. | `bypassPermissions` |
+| `server.py` | FastAPI job queue. Jobs run in the background and outlive the request. | `can_use_tool` |
+| `app.py` | Streamlit UI over the server. HTTP only — it never imports the SDK. | — |
+| `mcp_config.py` | Which MCP servers to spawn, and which of their tools are allowed. | — |
+
+Each entry point gets its own subdirectory under `workspaces/`, so the CLI, the
+resume test and each HTTP job never share a working directory. Streams are
+logged to `logs/`, one JSON object per message.
+
+```
+workspaces/
+  cli/                     run.py
+  resume-test/             resume_test.py — emptied at the start of each run
+  {job_id}/                one per job from server.py; reused when a session resumes
+logs/
+  run-{timestamp}.jsonl    run.py
+  resume-sdk-1.jsonl       resume_test.py, one file per run
+  resume-sdk-2.jsonl
+  job-{job_id}.jsonl       server.py
+```
+
+Both directories are gitignored, so a fresh clone has neither until you run
+something.
+
+**`run.py` and `resume_test.py` run under `bypassPermissions`; only `server.py`
+confines anything.** That contrast is what this repo is for, so it matters which
+one you are running. Under `bypassPermissions`, `cwd` is a suggestion: asked to
+write `hello.txt` with `cwd` set to `workspaces/cli`, a run created
+`../obviattor-agent-sdk-test/` and wrote there instead. `server.py`'s
+`can_use_tool` callback is what stops that.
+
+**Even that is not a sandbox.** The containment in `server.py` is
+defence-in-depth for experimenting on a machine you control. It inspects command
+text, so it stops an agent that wanders; it cannot stop one that constructs a
+path at runtime. Not adversarially tested, not a security boundary.
 
 ## MCP servers
 
@@ -56,13 +193,6 @@ stays empty. A name there would auto-approve the tool before `can_use_tool` ran,
 so the call would never be logged or refusable.
 
 ## Running the server and the UI
-
-The UI needs Streamlit; everything else is already in the venv. It uses `httpx`
-for its HTTP calls, which FastAPI already pulls in:
-
-```bash
-./.venv/bin/pip install streamlit
-```
 
 Two processes, two terminals. The UI talks to the server over HTTP and nothing
 else, so the server has to be up first.
